@@ -46,13 +46,23 @@ def flag_emoji(country_name):
     except:
         return ""
 
-region_choices = [
-    app_commands.Choice(
-        name=f"{flag_emoji(name)} {name}" if name != "World" else "🌍 World",
-        value=name
-    )
-    for name in sorted(REGIONS.keys())
-]
+# Remove the old region_choices definition
+# region_choices = [...]
+
+# Add autocomplete function for region
+async def region_autocomplete(
+    interaction: discord.Interaction,
+    current: str
+):
+    # Return up to 25 matching regions
+    return [
+        app_commands.Choice(
+            name=f"{flag_emoji(name)} {name}" if name != "World" else "🌍 World",
+            value=name
+        )
+        for name in sorted(REGIONS.keys())
+        if current.lower() in name.lower()
+    ][:25]
 
 # -------------- Earthquake Checker -----------------
 
@@ -177,16 +187,16 @@ async def unsubscribe(interaction: discord.Interaction):
     min_magnitude="Minimum magnitude to receive alerts for",
     region="Region to monitor earthquakes in"
 )
-@app_commands.choices(region=region_choices)
+@app_commands.autocomplete(region=region_autocomplete)
 @app_commands.checks.has_permissions(administrator=True)
 async def setchannel(
     interaction: discord.Interaction,
     min_magnitude: float,
-    region: app_commands.Choice[str]
+    region: str  # Use str, not Choice[str]
 ):
     guild_id = interaction.guild.id
     channel_id = interaction.channel_id
-    region_name = region.value
+    region_name = region
 
     set_alert_channel(guild_id, channel_id, min_magnitude, region_name)
     await interaction.response.send_message(
