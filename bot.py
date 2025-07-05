@@ -296,9 +296,26 @@ async def on_ready():
     await bot.change_presence(
         activity=discord.Activity(type=discord.ActivityType.watching, name="USGS Earthquakes")
     )
-    await tree.sync()
+    TEST_GUILD_ID = 123456789012345678
+    try:
+        synced = await tree.sync(guild=discord.Object(id=TEST_GUILD_ID))
+        print(f"🔧 Synced {len(synced)} commands to test guild {TEST_GUILD_ID}")
+    except Exception as e:
+        print(f"❌ Sync failed: {e}")
     print(f"✅ Logged in as {bot.user}")
     check_earthquakes.start()
     print("🔄 Earthquake checker started.")
+
+@tree.command(name="sync", description="Force re-sync of slash commands (dev only)")
+async def force_sync(interaction: discord.Interaction):
+    if interaction.user.id != 877557616094638112:
+        await interaction.response.send_message("⛔ You are not authorized to sync.", ephemeral=True)
+        return
+
+    try:
+        synced = await tree.sync()
+        await interaction.response.send_message(f"✅ Synced {len(synced)} commands globally.", ephemeral=True)
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Sync failed: {e}", ephemeral=True)
 
 bot.run(TOKEN)
