@@ -288,6 +288,20 @@ async def help_command(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
+@tree.command(name="removechannel", description="Remove the earthquake alert channel for this server")
+@app_commands.checks.has_permissions(administrator=True)
+async def removechannel(interaction: discord.Interaction):
+    guild_id = interaction.guild.id
+
+    # Remove the config from DB
+    conn = sqlite3.connect("config.db")
+    c = conn.cursor()
+    c.execute("DELETE FROM guild_channels WHERE guild_id = ?", (guild_id,))
+    conn.commit()
+    conn.close()
+
+    await interaction.response.send_message("🗑️ Alert channel removed. This server will no longer receive earthquake alerts.", ephemeral=True)
+
 # -------------- Ready Event -------------------------
 
 @bot.event
