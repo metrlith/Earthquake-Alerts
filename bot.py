@@ -343,16 +343,19 @@ async def removechannel(interaction: discord.Interaction):
 @bot.event
 async def on_ready():
     init_db()
+
     await bot.change_presence(
         activity=discord.Activity(type=discord.ActivityType.watching, name="USGS Earthquakes")
     )
-    TEST_GUILD_ID = 123456789012345678
+
     try:
-        synced = await tree.sync(guild=discord.Object(id=TEST_GUILD_ID))
-        print(f"🔧 Synced {len(synced)} commands to test guild {TEST_GUILD_ID}")
+        synced = await tree.sync()
+        print(f"🔧 Synced {len(synced)} commands globally.")
     except Exception as e:
         print(f"❌ Sync failed: {e}")
+
     print(f"✅ Logged in as {bot.user}")
+    await bot.wait_until_ready()
     check_earthquakes.start()
     print("🔄 Earthquake checker started.")
 
