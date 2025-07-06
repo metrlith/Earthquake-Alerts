@@ -170,6 +170,10 @@ async def check_earthquakes():
     except Exception as e:
         print("❌ Error fetching earthquake data:", e)
 
+@check_earthquakes.before_loop
+async def before_check_earthquakes():
+    await bot.wait_until_ready()
+
 # =======================================================
 # Slash Commands
 # =======================================================
