@@ -3,22 +3,23 @@ import sqlite3
 DB_FILE = "botdata.db"
 
 def init_db():
+    print("🛠️ Running init_db()...")
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS guild_channels (
+        guild_id INTEGER PRIMARY KEY,
+        channel_id INTEGER,
+        min_magnitude REAL,
+        region TEXT
+    )
+    """)
     c.execute("""
     CREATE TABLE IF NOT EXISTS subscribers (
         user_id INTEGER PRIMARY KEY,
         region TEXT,
         min_magnitude REAL
     )
-""")
-
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS subscribers (
-            user_id INTEGER PRIMARY KEY,
-            region TEXT,
-            min_magnitude REAL
-        )
     """)
     conn.commit()
     conn.close()
