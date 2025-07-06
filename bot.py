@@ -354,8 +354,9 @@ async def on_ready():
     except Exception as e:
         print(f"❌ Sync failed: {e}")
 
-    print(f"✅ Logged in as {bot.user}")
     await bot.wait_until_ready()
+
+    print(f"✅ Logged in as {bot.user}")
     check_earthquakes.start()
     print("🔄 Earthquake checker started.")
 
