@@ -14,6 +14,7 @@ import pycountry
 from dotenv import load_dotenv
 
 from database import (
+    DB_FILE,
     init_db,
     set_alert_channel,
     get_alert_channel,
@@ -328,8 +329,7 @@ async def help_command(interaction: discord.Interaction):
 async def removechannel(interaction: discord.Interaction):
     guild_id = interaction.guild.id
 
-    # Remove config from DB
-    conn = sqlite3.connect("config.db")
+    conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute("DELETE FROM guild_channels WHERE guild_id = ?", (guild_id,))
     conn.commit()
