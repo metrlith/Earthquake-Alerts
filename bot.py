@@ -1,39 +1,49 @@
 import os
+import sqlite3
 import requests
-from dotenv import load_dotenv
-import discord
 import json
-import pycountry
 import random
 from datetime import datetime
+
+import discord
 from discord.ext import tasks
 from discord.ext.commands import Bot
 from discord import app_commands
+
+import pycountry
+from dotenv import load_dotenv
+
 from database import (
     init_db,
     set_alert_channel,
     get_alert_channel,
     add_subscriber,
     remove_subscriber,
-    get_all_subscribers
+    get_all_subscribers_with_filters
 )
+
+# =======================================================
+# Configuration & Globals
+# =======================================================
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
+USGS_FEED_URL = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson"
+last_earthquake_time = None
 
 intents = discord.Intents.default()
 intents.message_content = False
 intents.members = True
 
-bot = Bot(command_prefix="!", intents=intents)
+bot = Bot(command_prefix="/", intents=intents)
 tree = bot.tree
 
-USGS_FEED_URL = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson"
-last_earthquake_time = None
+# =======================================================
+# Regions & Flags
+# =======================================================
 
 with open("countries.json", "r") as f:
     loaded_regions = json.load(f)
-
 REGIONS = {"World": None, **loaded_regions}
 
 def flag_emoji(country_name):
@@ -46,15 +56,7 @@ def flag_emoji(country_name):
     except:
         return ""
 
-# Remove the old region_choices definition
-# region_choices = [...]
-
-# Add autocomplete function for region
-async def region_autocomplete(
-    interaction: discord.Interaction,
-    current: str
-):
-    # Return up to 25 matching regions
+async def region_autocomplete(interaction: discord.Interaction, current: str):
     return [
         app_commands.Choice(
             name=f"{flag_emoji(name)} {name}" if name != "World" else "🌍 World",
@@ -64,23 +66,26 @@ async def region_autocomplete(
         if current.lower() in name.lower()
     ][:25]
 
-# -------------- Earthquake Checker -----------------
+# =======================================================
+# Earthquake Checker Task
+# =======================================================
 
 @tasks.loop(minutes=1)
 async def check_earthquakes():
     global last_earthquake_time
-
     try:
         response = requests.get(USGS_FEED_URL)
         data = response.json()
 
         for feature in data["features"]:
+            event_id = feature["id"]
+            map_url = f"https://earthquake.usgs.gov/earthquakes/eventpage/{event_id}/map"
             props = feature["properties"]
             geom = feature["geometry"]
             place = props["place"]
             mag = props["mag"]
             quake_time = props["time"]
-            coords = geom["coordinates"]  # [longitude, latitude, depth]
+            coords = geom["coordinates"]
             lon, lat = coords[0], coords[1]
 
             if mag is None:
@@ -89,7 +94,7 @@ async def check_earthquakes():
             if last_earthquake_time is None or quake_time > last_earthquake_time:
                 last_earthquake_time = quake_time
 
-                # Send alerts to each configured guild based on region + magnitude
+                # Guild alerts
                 for guild in bot.guilds:
                     result = get_alert_channel(guild.id)
                     if not result:
@@ -98,27 +103,21 @@ async def check_earthquakes():
                     channel_id, min_mag, region_name = result
                     if min_mag is None or region_name is None:
                         continue
-
-                    # Filter by magnitude
                     if mag < min_mag:
                         continue
 
-                    # Filter by region
                     bounds = REGIONS.get(region_name)
-                    if bounds:  # Not "World"
+                    if bounds:
                         lat_min, lat_max, lon_min, lon_max = bounds
                         if not (lat_min <= lat <= lat_max and lon_min <= lon <= lon_max):
                             continue
 
-                    # Passed all filters → send alert
                     channel = bot.get_channel(channel_id)
                     if channel:
                         try:
-                            # Log to file before sending
                             with open("logs.txt", "a") as log:
                                 log.write(f"[{datetime.utcnow()}] Magnitude {mag} | {place} | {lat}, {lon} | URL: {props['url']}\n")
 
-                            # Build the embed for the channel
                             embed = discord.Embed(
                                 title="🌍 Earthquake Alert!",
                                 color=discord.Color.from_rgb(231, 76, 60),
@@ -130,17 +129,26 @@ async def check_earthquakes():
                             embed.add_field(name="Location", value=place or "Unknown", inline=False)
                             embed.add_field(name="Coordinates", value=f"`{lat}, {lon}`", inline=False)
                             embed.add_field(name="More Info", value=f"[USGS Details]({props['url']})", inline=False)
+                            embed.add_field(name="Epicenter Map", value=f"[📍 View on Map]({map_url})", inline=False)
                             embed.set_footer(text="Stay alert. Stay safe.")
 
                             await channel.send(embed=embed)
-
                         except Exception as e:
                             print(f"❌ Failed to send to {channel_id}: {e}")
 
-                # DM subscribers (no region filtering)
-                for user_id in get_all_subscribers():
-                    user = await bot.fetch_user(user_id)
+                # DM subscribers
+                for user_id, sub_region, sub_mag in get_all_subscribers_with_filters():
+                    if mag < sub_mag:
+                        continue
+
+                    sub_bounds = REGIONS.get(sub_region)
+                    if sub_bounds:
+                        lat_min, lat_max, lon_min, lon_max = sub_bounds
+                        if not (lat_min <= lat <= lat_max and lon_min <= lon <= lon_max):
+                            continue
+
                     try:
+                        user = await bot.fetch_user(user_id)
                         embed = discord.Embed(
                             title="🔔 Earthquake Detected!",
                             color=discord.Color.from_rgb(231, 76, 60),
@@ -157,52 +165,81 @@ async def check_earthquakes():
                     except Exception as e:
                         print(f"❌ Failed to DM {user_id}: {e}")
 
-                break  # Only notify for the most recent quake
+                break
 
     except Exception as e:
         print("❌ Error fetching earthquake data:", e)
 
-# -------------- Slash Commands ----------------------
+# =======================================================
+# Slash Commands
+# =======================================================
 
-@tree.command(name="subscribe", description="Subscribe to earthquake alerts via DM")
-async def subscribe(interaction: discord.Interaction):
-    user_id = interaction.user.id
-    if user_id in get_all_subscribers():
-        await interaction.response.send_message("✅ You are already subscribed!", ephemeral=True)
-    else:
-        add_subscriber(user_id)
-        await interaction.response.send_message("📬 Subscribed to global earthquake alerts via DM!", ephemeral=True)
+@tree.command(name="subscribe", description="Receive DMs for earthquakes matching your region and minimum magnitude")
+@app_commands.describe(
+    region="Country you want alerts for",
+    min_magnitude="Minimum magnitude to receive DMs"
+)
+async def subscribe(interaction: discord.Interaction, region: str, min_magnitude: float):
+    if region not in REGIONS:
+        await interaction.response.send_message("⚠️ Invalid region. Please choose a valid country name.", ephemeral=True)
+        return
+
+    add_subscriber(interaction.user.id, region, min_magnitude)
+    await interaction.response.send_message(
+        f"📬 You are now subscribed to DMs for `{region}` earthquakes ≥ `{min_magnitude}`!",
+        ephemeral=True
+    )
+
+@subscribe.autocomplete("region")
+async def region_autocomplete(interaction: discord.Interaction, current: str):
+    return [
+        app_commands.Choice(name=name, value=name)
+        for name in sorted(REGIONS.keys())
+        if current.lower() in name.lower()
+    ][:25]
 
 @tree.command(name="unsubscribe", description="Unsubscribe from alerts")
 async def unsubscribe(interaction: discord.Interaction):
     user_id = interaction.user.id
-    if user_id in get_all_subscribers():
-        remove_subscriber(user_id)
-        await interaction.response.send_message("❎ Unsubscribed from alerts.", ephemeral=True)
-    else:
-        await interaction.response.send_message("⚠️ You are not subscribed.", ephemeral=True)
+    remove_subscriber(user_id)
+    await interaction.response.send_message("❎ You have been unsubscribed from alerts.", ephemeral=True)
 
-@tree.command(name="setchannel", description="Set this channel to receive earthquake alerts")
+@tree.command(name="setchannel", description="Configure earthquake alerts for this server")
 @app_commands.describe(
+    channel="Which channel should receive earthquake alerts?",
     min_magnitude="Minimum magnitude to receive alerts for",
     region="Region to monitor earthquakes in"
 )
-@app_commands.autocomplete(region=region_autocomplete)
 @app_commands.checks.has_permissions(administrator=True)
 async def setchannel(
     interaction: discord.Interaction,
+    channel: discord.TextChannel,
     min_magnitude: float,
-    region: str  # Use str, not Choice[str]
+    region: str
 ):
     guild_id = interaction.guild.id
-    channel_id = interaction.channel_id
-    region_name = region
 
-    set_alert_channel(guild_id, channel_id, min_magnitude, region_name)
+    if region not in REGIONS:
+        await interaction.response.send_message(
+            "⚠️ Invalid region. Please choose a valid country name.",
+            ephemeral=True
+        )
+        return
+
+    set_alert_channel(guild_id, channel.id, min_magnitude, region)
+
     await interaction.response.send_message(
-        f"✅ Alerts will be sent to this channel for `{region_name}` with magnitude ≥ `{min_magnitude}`.",
+        f"✅ Alerts will be sent to {channel.mention} for `{region}` with magnitude ≥ `{min_magnitude}`.",
         ephemeral=True
     )
+
+@setchannel.autocomplete("region")
+async def region_autocomplete(interaction: discord.Interaction, current: str):
+    return [
+        app_commands.Choice(name=name, value=name)
+        for name in sorted(REGIONS.keys())
+        if current.lower() in name.lower()
+    ][:25]
 
 @tree.command(name="faketest", description="Send a fake earthquake alert (only for the developer)")
 async def faketest(interaction: discord.Interaction):
@@ -210,22 +247,17 @@ async def faketest(interaction: discord.Interaction):
         await interaction.response.send_message("⛔ You are not authorized to use this command.", ephemeral=True)
         return
 
-    # Pick a random country
     country = random.choice(list(REGIONS.keys()))
     bounds = REGIONS[country]
-
-    # Random magnitude
     mag = round(random.uniform(1.0, 9.9), 1)
 
-    # Random coordinates
     if bounds:
         lat = round(random.uniform(bounds[0], bounds[1]), 4)
         lon = round(random.uniform(bounds[2], bounds[3]), 4)
-    else:  # World
+    else:
         lat = round(random.uniform(-90.0, 90.0), 4)
         lon = round(random.uniform(-180.0, 180.0), 4)
 
-    # Build the message
     embed = discord.Embed(
         title="🌍 **Earthquake Alert!**",
         description=f"**Magnitude:** `{mag}`\n**Location:** `{country}`\n**Coordinates:** `{lat}, {lon}`",
@@ -241,7 +273,6 @@ async def faketest(interaction: discord.Interaction):
 async def status(interaction: discord.Interaction):
     guild_id = interaction.guild.id
     result = get_alert_channel(guild_id)
-    
     if not result:
         await interaction.response.send_message("⚠️ This server has no alert configuration yet. Use `/setchannel` to set one up.", ephemeral=True)
         return
@@ -293,16 +324,21 @@ async def help_command(interaction: discord.Interaction):
 async def removechannel(interaction: discord.Interaction):
     guild_id = interaction.guild.id
 
-    # Remove the config from DB
+    # Remove config from DB
     conn = sqlite3.connect("config.db")
     c = conn.cursor()
     c.execute("DELETE FROM guild_channels WHERE guild_id = ?", (guild_id,))
     conn.commit()
     conn.close()
 
-    await interaction.response.send_message("🗑️ Alert channel removed. This server will no longer receive earthquake alerts.", ephemeral=True)
+    await interaction.response.send_message(
+        "🗑️ Earthquake alerts have been disabled for this server. Use `/setchannel` to re-enable.",
+        ephemeral=True
+    )
 
-# -------------- Ready Event -------------------------
+# =======================================================
+# Bot Events
+# =======================================================
 
 @bot.event
 async def on_ready():
@@ -331,5 +367,9 @@ async def force_sync(interaction: discord.Interaction):
         await interaction.response.send_message(f"✅ Synced {len(synced)} commands globally.", ephemeral=True)
     except Exception as e:
         await interaction.response.send_message(f"❌ Sync failed: {e}", ephemeral=True)
+
+# =======================================================
+# Run Bot
+# =======================================================
 
 bot.run(TOKEN)

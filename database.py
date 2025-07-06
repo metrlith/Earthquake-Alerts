@@ -25,6 +25,27 @@ def init_db():
     conn.commit()
     conn.close()
 
+def init_db():
+    conn = sqlite3.connect("config.db")
+    c = conn.cursor()
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS subscribers (
+        user_id INTEGER PRIMARY KEY,
+        region TEXT,
+        min_magnitude REAL
+    )
+""")
+
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS subscribers (
+            user_id INTEGER PRIMARY KEY,
+            region TEXT,
+            min_magnitude REAL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
 def set_alert_channel(guild_id, channel_id, min_magnitude, region):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -44,10 +65,13 @@ def get_alert_channel(guild_id):
     conn.close()
     return result if result else None
 
-def add_subscriber(user_id):
+def add_subscriber(user_id, region, min_magnitude):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("INSERT OR IGNORE INTO subscribers (user_id) VALUES (?)", (user_id,))
+    c.execute(
+        "REPLACE INTO subscribers (user_id, region, min_magnitude) VALUES (?, ?, ?)",
+        (user_id, region, min_magnitude)
+    )
     conn.commit()
     conn.close()
 
@@ -58,10 +82,10 @@ def remove_subscriber(user_id):
     conn.commit()
     conn.close()
 
-def get_all_subscribers():
+def get_all_subscribers_with_filters():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("SELECT user_id FROM subscribers")
-    users = [row[0] for row in c.fetchall()]
+    c.execute("SELECT user_id, region, min_magnitude FROM subscribers")
+    result = c.fetchall()
     conn.close()
-    return users
+    return result
