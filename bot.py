@@ -1,4 +1,8 @@
 import os
+if os.path.exists("config.db"):
+    os.remove("config.db")
+    print("🗑️ Removed old config.db")
+
 import sqlite3
 import requests
 import json
