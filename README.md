@@ -71,7 +71,6 @@ python bot.py
 
 - [countries.json](countries.json) — Country bounding boxes for region filtering.
 - [countries.csv](countries.csv) — Reference for country bounding boxes.
-- [.env](.env) — Environment variables (not committed).
 - [botdata.db](botdata.db) / [config.db](config.db) — SQLite databases for storing configuration and subscriptions.
 
 ## Dependencies
