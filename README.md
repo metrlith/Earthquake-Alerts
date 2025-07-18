@@ -1,4 +1,7 @@
-🇹🇷 Türkçe versiyon için lütfen [bu dosyaya](Türkçe.md) bakınız.
+<!-- markdownlint-disable MD041 -->
+> [!IMPORTANT]
+>
+> 🇹🇷 Türkçe versiyon için lütfen [bu dosyaya](Türkçe.md) bakınız.
 
 # Earthquake Alerts Discord Bot
 
