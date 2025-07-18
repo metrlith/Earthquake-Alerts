@@ -1,3 +1,5 @@
+🇹🇷 Türkçe versiyon için lütfen [bu dosyaya](Türkçe.md) bakınız.
+
 # Earthquake Alerts Discord Bot
 
 A Discord bot that provides real-time earthquake alerts from the USGS feed. Users can subscribe to receive direct messages for earthquakes in specific regions and above a minimum magnitude, and server admins can configure alert channels for their communities.
