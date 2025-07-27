@@ -248,9 +248,11 @@ async def region_autocomplete(interaction: discord.Interaction, current: str):
 
 @tree.command(name="faketest", description="Send a fake earthquake alert (only for the developer)")
 async def faketest(interaction: discord.Interaction):
-    if interaction.user.id != 877557616094638112:
-        await interaction.response.send_message("⛔ You are not authorized to use this command.", ephemeral=True)
-        return
+    ALLOWED_TESTERS = [877557616094638112, 786150805773746197]
+
+    if interaction.user.id not in ALLOWED_TESTERS:
+      await interaction.response.send_message("⛔ You are not authorized to use this command.", ephemeral=True)
+      return
 
     country = random.choice(list(REGIONS.keys()))
     bounds = REGIONS[country]
