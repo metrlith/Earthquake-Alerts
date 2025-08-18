@@ -33,7 +33,7 @@ USGS_FEED_URL = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_h
 last_earthquake_time = None
 
 intents = discord.Intents.default()
-intents.message_content = False
+intents.message_content = True
 intents.members = True
 
 bot = Bot(command_prefix="/", intents=intents)
